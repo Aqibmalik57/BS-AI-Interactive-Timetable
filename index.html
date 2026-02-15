@@ -1,0 +1,1084 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BS (AI) Interactive Timetable Dashboard</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Chosen Palette: Warm Neutrals & Earth Tones -->
+    <!-- Application Structure Plan: 
+         1. Header: Live status dashboard showing current time, day, and active/upcoming class.
+         2. Main Layout: Split view (responsive).
+            - Left/Top: Interactive Schedule Views (Daily Agenda & Weekly Grid).
+            - Right/Bottom: Course Directory & Analytical Insights.
+         3. Logic: 
+            - Real-time clock to highlight active classes.
+            - Filtering system for courses.
+            - Analytics to visualize workload (credit hours) and schedule density.
+         Why: This structure transforms a static list into a time-management tool, helping students know "where to be now" while understanding their overall semester load.
+    -->
+
+    <style>
+      /* Chart Container Styling Constraints */
+      .chart-container {
+        position: relative;
+        width: 100%;
+        max-width: 600px;
+        height: 300px; /* Base height */
+        max-height: 400px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      @media (min-width: 768px) {
+        .chart-container {
+          height: 350px;
+        }
+      }
+
+      /* Custom Scrollbar for inner content */
+      .custom-scroll::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      .custom-scroll::-webkit-scrollbar-track {
+        background: #f5f5f4;
+      }
+      .custom-scroll::-webkit-scrollbar-thumb {
+        background: #d6d3d1;
+        border-radius: 3px;
+      }
+      .custom-scroll::-webkit-scrollbar-thumb:hover {
+        background: #a8a29e;
+      }
+
+      /* Utility for transitioning background colors */
+      .transition-bg {
+        transition:
+          background-color 0.3s ease,
+          border-color 0.3s ease;
+      }
+    </style>
+  </head>
+  <body
+    class="bg-stone-50 text-stone-800 font-sans antialiased min-h-screen flex flex-col"
+  >
+    <!-- Navbar / Header -->
+    <header
+      class="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-sm"
+    >
+      <div
+        class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between"
+      >
+        <div class="flex items-center gap-2">
+          <div
+            class="h-8 w-8 bg-amber-600 rounded flex items-center justify-center text-white font-bold"
+          >
+            AI
+          </div>
+          <div>
+            <h1 class="font-bold text-lg leading-tight">BS (AI) Morning</h1>
+            <p class="text-xs text-stone-500">Section: BSARIN-3RD-1M</p>
+          </div>
+        </div>
+        <div class="text-right hidden sm:block">
+          <div
+            id="live-clock"
+            class="text-xl font-mono font-semibold text-stone-700"
+          >
+            00:00:00
+          </div>
+          <div
+            id="live-date"
+            class="text-xs text-stone-500 uppercase tracking-wider"
+          >
+            Loading...
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content -->
+    <main
+      class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8"
+    >
+      <!-- Live Status Section -->
+      <section
+        class="bg-white rounded-xl shadow-sm border border-stone-200 overflow-hidden"
+      >
+        <div class="p-6 md:p-8 bg-gradient-to-r from-stone-100 to-stone-50">
+          <h2 class="text-2xl font-bold text-stone-800 mb-2">
+            👋 Current Status
+          </h2>
+          <p class="text-stone-600 max-w-2xl mb-6">
+            Welcome to your interactive dashboard. This section monitors the
+            current time against your schedule to tell you exactly where you
+            need to be.
+          </p>
+
+          <div
+            id="status-card"
+            class="bg-white border border-l-4 border-stone-300 rounded-lg p-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-500"
+          >
+            <div>
+              <span
+                id="status-label"
+                class="inline-block px-2 py-1 bg-stone-100 text-stone-600 text-xs font-bold uppercase rounded mb-2"
+                >Status</span
+              >
+              <h3
+                id="status-title"
+                class="text-xl md:text-2xl font-bold text-stone-800"
+              >
+                Loading Schedule...
+              </h3>
+              <p id="status-details" class="text-stone-500 mt-1">
+                Please wait.
+              </p>
+            </div>
+            <div id="status-action" class="hidden">
+              <button
+                class="bg-stone-800 hover:bg-stone-900 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                View Details
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Main Grid Layout -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- LEFT COLUMN: Schedule Views (Occupies 2/3 on desktop) -->
+        <div class="lg:col-span-2 space-y-8">
+          <!-- View Toggle -->
+          <div class="flex items-center justify-between">
+            <h2 class="text-xl font-bold text-stone-800">📅 Class Schedule</h2>
+            <div class="bg-stone-200 p-1 rounded-lg flex text-sm font-medium">
+              <button
+                id="btn-view-daily"
+                class="px-3 py-1.5 rounded-md bg-white shadow text-stone-800 transition-all"
+                onclick="switchView('daily')"
+              >
+                Daily
+              </button>
+              <button
+                id="btn-view-weekly"
+                class="px-3 py-1.5 rounded-md text-stone-500 hover:text-stone-700 transition-all"
+                onclick="switchView('weekly')"
+              >
+                Weekly
+              </button>
+            </div>
+          </div>
+
+          <!-- Daily View Container -->
+          <div id="view-daily" class="space-y-4">
+            <p class="text-stone-600 text-sm">
+              Below is the specific agenda for
+              <span id="daily-view-day-name" class="font-bold text-amber-700"
+                >Today</span
+              >. Use the buttons below to check other days.
+            </p>
+
+            <!-- Day Selector -->
+            <div class="flex flex-wrap gap-2 mb-4">
+              <button
+                onclick="setDailyView('MON')"
+                class="day-btn px-4 py-2 rounded-full border border-stone-300 hover:bg-stone-100 text-stone-600 text-sm font-medium transition-colors"
+                data-day="MON"
+              >
+                Mon
+              </button>
+              <button
+                onclick="setDailyView('TUE')"
+                class="day-btn px-4 py-2 rounded-full border border-stone-300 hover:bg-stone-100 text-stone-600 text-sm font-medium transition-colors"
+                data-day="TUE"
+              >
+                Tue
+              </button>
+              <button
+                onclick="setDailyView('WED')"
+                class="day-btn px-4 py-2 rounded-full border border-stone-300 hover:bg-stone-100 text-stone-600 text-sm font-medium transition-colors"
+                data-day="WED"
+              >
+                Wed
+              </button>
+              <button
+                onclick="setDailyView('THU')"
+                class="day-btn px-4 py-2 rounded-full border border-stone-300 hover:bg-stone-100 text-stone-600 text-sm font-medium transition-colors"
+                data-day="THU"
+              >
+                Thu
+              </button>
+            </div>
+
+            <div id="daily-cards-container" class="space-y-3">
+              <!-- Cards injected by JS -->
+              <div
+                class="p-8 text-center bg-white rounded-xl border border-dashed border-stone-300 text-stone-400"
+              >
+                Select a day to view classes.
+              </div>
+            </div>
+          </div>
+
+          <!-- Weekly View Container (Hidden by default) -->
+          <div
+            id="view-weekly"
+            class="hidden overflow-hidden bg-white rounded-xl shadow-sm border border-stone-200"
+          >
+            <p
+              class="p-4 text-stone-600 text-sm border-b border-stone-100 bg-stone-50"
+            >
+              A comprehensive grid view of the entire week. Scroll horizontally
+              on mobile.
+            </p>
+            <div class="overflow-x-auto custom-scroll">
+              <table class="min-w-full text-sm text-left">
+                <thead
+                  class="bg-stone-100 text-stone-600 font-medium border-b border-stone-200"
+                >
+                  <tr>
+                    <th class="px-4 py-3 w-24 sticky left-0 bg-stone-100 z-10">
+                      Time
+                    </th>
+                    <th class="px-4 py-3 min-w-[160px]">Monday</th>
+                    <th class="px-4 py-3 min-w-[160px]">Tuesday</th>
+                    <th class="px-4 py-3 min-w-[160px]">Wednesday</th>
+                    <th class="px-4 py-3 min-w-[160px]">Thursday</th>
+                  </tr>
+                </thead>
+                <tbody id="weekly-grid-body" class="divide-y divide-stone-100">
+                  <!-- Grid Rows injected by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Course Directory Filter -->
+          <div
+            class="bg-white rounded-xl shadow-sm border border-stone-200 p-6"
+          >
+            <h3 class="font-bold text-stone-800 mb-4 flex items-center gap-2">
+              <span>📚 Course Directory</span>
+            </h3>
+            <p class="text-sm text-stone-600 mb-4">
+              Filter the schedule and view specific course details. Click a
+              course to highlight its sessions.
+            </p>
+            <div class="relative mb-4">
+              <input
+                type="text"
+                id="course-search"
+                placeholder="Search by name, code, or teacher..."
+                class="w-full px-4 py-2 border border-stone-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-amber-500 outline-none transition-all text-sm"
+              />
+              <span class="absolute right-3 top-2.5 text-stone-400">🔍</span>
+            </div>
+            <div
+              id="course-list"
+              class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto custom-scroll pr-2"
+            >
+              <!-- Course items injected here -->
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT COLUMN: Analytics & Stats (Occupies 1/3 on desktop) -->
+        <div class="space-y-8">
+          <!-- Analytics Section Intro -->
+          <div class="bg-stone-800 text-white p-6 rounded-xl shadow-lg">
+            <h3 class="font-bold text-lg mb-2">📊 Analytics Dashboard</h3>
+            <p class="text-stone-300 text-sm opacity-90">
+              Visualizing the distribution of your academic load. Understand
+              where your credit hours are allocated and which days are most
+              intensive.
+            </p>
+          </div>
+
+          <!-- Chart 1: Daily Load -->
+          <div
+            class="bg-white p-4 rounded-xl shadow-sm border border-stone-200"
+          >
+            <h4
+              class="text-sm font-bold text-stone-700 mb-4 border-l-4 border-amber-500 pl-2"
+            >
+              Classes per Day
+            </h4>
+            <div class="chart-container">
+              <canvas id="dailyLoadChart"></canvas>
+            </div>
+            <p class="text-xs text-stone-500 mt-2 text-center">
+              Number of sessions scheduled per day.
+            </p>
+          </div>
+
+          <!-- Chart 2: Credit Hours -->
+          <div
+            class="bg-white p-4 rounded-xl shadow-sm border border-stone-200"
+          >
+            <h4
+              class="text-sm font-bold text-stone-700 mb-4 border-l-4 border-sky-500 pl-2"
+            >
+              Credit Hour Distribution
+            </h4>
+            <div class="chart-container">
+              <canvas id="creditHourChart"></canvas>
+            </div>
+            <p class="text-xs text-stone-500 mt-2 text-center">
+              Weighted by course credits.
+            </p>
+          </div>
+
+          <!-- Quick Stats -->
+          <div class="grid grid-cols-2 gap-4">
+            <div
+              class="bg-amber-50 p-4 rounded-xl border border-amber-100 text-center"
+            >
+              <div
+                class="text-2xl font-bold text-amber-700"
+                id="total-courses-count"
+              >
+                0
+              </div>
+              <div
+                class="text-xs font-medium text-amber-800 uppercase tracking-wide"
+              >
+                Total Subjects
+              </div>
+            </div>
+            <div
+              class="bg-sky-50 p-4 rounded-xl border border-sky-100 text-center"
+            >
+              <div
+                class="text-2xl font-bold text-sky-700"
+                id="total-hours-count"
+              >
+                0
+              </div>
+              <div
+                class="text-xs font-medium text-sky-800 uppercase tracking-wide"
+              >
+                Total Credits
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white border-t border-stone-200 py-8 mt-auto">
+      <div class="max-w-7xl mx-auto px-4 text-center">
+        <p class="text-stone-500 text-sm">
+          Generated for Section BSARIN-3RD-1M &copy; 2026
+        </p>
+        <p class="text-xs text-stone-400 mt-1">
+          Based on provided timetable source data.
+        </p>
+      </div>
+    </footer>
+
+    <!-- Visualization & Content Choices:
+         - Data Source: Hardcoded JS array mirroring the provided markdown table.
+         - Visual 1 (Daily Load Bar Chart): Goal -> Compare workload across days. Method -> Bar Chart (Chart.js). Interaction -> Hover for exact count.
+         - Visual 2 (Credits Doughnut): Goal -> Show weight of each subject. Method -> Doughnut Chart (Chart.js). Interaction -> Click legend to filter.
+         - Visual 3 (Status Card): Goal -> Immediate context. Method -> DOM Manipulation based on Time.
+         - Interaction: Tab switching for views, Search filtering for courses, Time-based highlighting.
+         - CONFIRMATION: NO SVG graphics used. NO Mermaid JS used.
+    -->
+
+    <script>
+      // --- DATA SOURCE ---
+      const timetableData = [
+        {
+          id: 1,
+          day: "MON",
+          start: "10:00 AM",
+          end: "11:00 AM",
+          course: "Digital Logic Design",
+          code: "ARIN-1110",
+          teacher: "Dr. Amna Ashraf",
+          room: "2.24",
+          credits: "3 (2-1)",
+          type: "Lecture",
+        },
+        {
+          id: 2,
+          day: "MON",
+          start: "11:00 AM",
+          end: "12:30 PM",
+          course: "Data Structures",
+          code: "ARIN-1108",
+          teacher: "Ms. Zunera Abdullah",
+          room: "2.26",
+          credits: "4 (3-1)",
+          type: "Lecture",
+        },
+        {
+          id: 3,
+          day: "MON",
+          start: "12:30 PM",
+          end: "02:00 PM",
+          course: "Programming for Artificial Intelligence",
+          code: "ARIN-1109",
+          teacher: "Dr. Mobeen Shahroz",
+          room: "2.27",
+          credits: "3 (2-1)",
+          type: "Lecture",
+        },
+        {
+          id: 4,
+          day: "TUE",
+          start: "08:00 AM",
+          end: "09:00 AM",
+          course: "Digital Logic Design",
+          code: "ARIN-1110",
+          teacher: "Dr. Amna Ashraf",
+          room: "2.26",
+          credits: "3 (2-1)",
+          type: "Lecture",
+        },
+        {
+          id: 5,
+          day: "TUE",
+          start: "09:00 AM",
+          end: "10:00 AM",
+          course: "Data Structures",
+          code: "ARIN-1108",
+          teacher: "Ms. Zunera Abdullah",
+          room: "2.26",
+          credits: "4 (3-1)",
+          type: "Lecture",
+        },
+        {
+          id: 6,
+          day: "TUE",
+          start: "10:30 AM",
+          end: "12:00 PM",
+          course: "Programming for Artificial Intelligence",
+          code: "ARIN-1109",
+          teacher: "Dr. Mobeen Shahroz",
+          room: "2.26",
+          credits: "3 (2-1)",
+          type: "Lecture",
+        },
+        {
+          id: 7,
+          day: "TUE",
+          start: "01:30 PM",
+          end: "03:30 PM",
+          course: "Arabic for Understanding Quran",
+          code: "TSAQN-401",
+          teacher: "Mr. Ali Raza",
+          room: "Auditorium Faculty of Agriculture",
+          credits: "3 (3-0)",
+          type: "Lecture",
+        },
+        {
+          id: 8,
+          day: "WED",
+          start: "11:00 AM",
+          end: "12:00 PM",
+          course: "Linear Algebra",
+          code: "MATH-2102",
+          teacher: "Dr. Muhammad Nadeem",
+          room: "MATHS-1.56",
+          credits: "3 (3-0)",
+          type: "Lecture",
+        },
+        {
+          id: 9,
+          day: "WED",
+          start: "12:00 PM",
+          end: "01:00 PM",
+          course: "Software Engineering",
+          code: "ARIN-1110",
+          teacher: "Mr. Muhammad khizar Farooq",
+          room: "MATHS-1.56",
+          credits: "3 (3-0)",
+          type: "Lecture",
+        },
+        {
+          id: 10,
+          day: "WED",
+          start: "01:30 PM",
+          end: "03:30 PM",
+          course: "Pak Studies",
+          code: "PS-401",
+          teacher: "Dr. Muhammad Rashid",
+          room: "Auditorium Faculty of Agriculture",
+          credits: "2 (2-0)",
+          type: "Lecture",
+        },
+        {
+          id: 11,
+          day: "THU",
+          start: "10:00 AM",
+          end: "11:00 AM",
+          course: "Software Engineering",
+          code: "ARIN-1110",
+          teacher: "Mr. Muhammad khizar Farooq",
+          room: "MATHS-1.56",
+          credits: "3 (3-0)",
+          type: "Lecture",
+        },
+        {
+          id: 12,
+          day: "THU",
+          start: "11:00 AM",
+          end: "12:00 PM",
+          course: "Linear Algebra",
+          code: "MATH-2102",
+          teacher: "Dr. Muhammad Nadeem",
+          room: "MATHS-1.56",
+          credits: "3 (3-0)",
+          type: "Lecture",
+        },
+      ];
+
+      // Color mapping for courses to ensure visual consistency
+      const courseColors = {
+        "Digital Logic Design": "bg-rose-100 border-rose-300 text-rose-800",
+        "Data Structures": "bg-blue-100 border-blue-300 text-blue-800",
+        "Programming for Artificial Intelligence":
+          "bg-purple-100 border-purple-300 text-purple-800",
+        "Arabic for Understanding Quran":
+          "bg-emerald-100 border-emerald-300 text-emerald-800",
+        "Linear Algebra": "bg-orange-100 border-orange-300 text-orange-800",
+        "Software Engineering":
+          "bg-indigo-100 border-indigo-300 text-indigo-800",
+        "Pak Studies": "bg-lime-100 border-lime-300 text-lime-800",
+      };
+
+      const defaultColor = "bg-gray-100 border-gray-300 text-gray-800";
+
+      // --- UTILITY FUNCTIONS ---
+
+      // Convert "10:30 AM" to minutes from midnight
+      function parseTime(timeStr) {
+        const [time, modifier] = timeStr.split(" ");
+        let [hours, minutes] = time.split(":");
+        hours = parseInt(hours);
+        minutes = parseInt(minutes);
+        if (modifier === "PM" && hours !== 12) hours += 12;
+        if (modifier === "AM" && hours === 12) hours = 0;
+        return hours * 60 + minutes;
+      }
+
+      // Convert minutes to "10:30 AM" format
+      function formatMinutes(minutes) {
+        let h = Math.floor(minutes / 60);
+        let m = minutes % 60;
+        const ampm = h >= 12 ? "PM" : "AM";
+        h = h % 12;
+        h = h ? h : 12;
+        m = m < 10 ? "0" + m : m;
+        return `${h}:${m} ${ampm}`;
+      }
+
+      // Get unique items
+      const uniqueCourses = [
+        ...new Set(timetableData.map((item) => item.course)),
+      ];
+      const daysOrder = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
+      // --- STATE MANAGEMENT ---
+      let currentView = "daily"; // 'daily' or 'weekly'
+      let selectedDay = "MON"; // Default day
+      let searchTerm = "";
+
+      // --- INITIALIZATION ---
+      document.addEventListener("DOMContentLoaded", () => {
+        // Set initial day based on real time
+        const today = new Date().getDay(); // 0=Sun, 1=Mon...
+        const dayMap = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+        let todayStr = dayMap[today];
+
+        // If today is Fri/Sat/Sun (no classes), default to MON for viewing
+        if (["FRI", "SAT", "SUN"].includes(todayStr)) {
+          selectedDay = "MON";
+        } else {
+          selectedDay = todayStr;
+        }
+
+        renderView();
+        initClock();
+        renderCharts();
+        renderCourseList();
+
+        // Search Listener
+        document
+          .getElementById("course-search")
+          .addEventListener("input", (e) => {
+            searchTerm = e.target.value.toLowerCase();
+            renderCourseList();
+            renderView(); // Re-render logic to highlight/filter
+          });
+      });
+
+      // --- RENDERING LOGIC ---
+
+      function switchView(view) {
+        currentView = view;
+
+        // Update Tab Styles
+        const btnDaily = document.getElementById("btn-view-daily");
+        const btnWeekly = document.getElementById("btn-view-weekly");
+        const dailyContainer = document.getElementById("view-daily");
+        const weeklyContainer = document.getElementById("view-weekly");
+
+        if (view === "daily") {
+          btnDaily.className =
+            "px-3 py-1.5 rounded-md bg-white shadow text-stone-800 transition-all font-medium";
+          btnWeekly.className =
+            "px-3 py-1.5 rounded-md text-stone-500 hover:text-stone-700 transition-all";
+          dailyContainer.classList.remove("hidden");
+          weeklyContainer.classList.add("hidden");
+        } else {
+          btnWeekly.className =
+            "px-3 py-1.5 rounded-md bg-white shadow text-stone-800 transition-all font-medium";
+          btnDaily.className =
+            "px-3 py-1.5 rounded-md text-stone-500 hover:text-stone-700 transition-all";
+          weeklyContainer.classList.remove("hidden");
+          dailyContainer.classList.add("hidden");
+          renderWeeklyGrid();
+        }
+      }
+
+      function setDailyView(day) {
+        selectedDay = day;
+        renderView();
+      }
+
+      function renderView() {
+        // Update day buttons state
+        document.querySelectorAll(".day-btn").forEach((btn) => {
+          if (btn.dataset.day === selectedDay) {
+            btn.classList.add("bg-stone-800", "text-white", "border-stone-800");
+            btn.classList.remove(
+              "bg-white",
+              "text-stone-600",
+              "border-stone-300",
+              "hover:bg-stone-100",
+            );
+          } else {
+            btn.classList.remove(
+              "bg-stone-800",
+              "text-white",
+              "border-stone-800",
+            );
+            btn.classList.add(
+              "bg-white",
+              "text-stone-600",
+              "border-stone-300",
+              "hover:bg-stone-100",
+            );
+          }
+        });
+
+        document.getElementById("daily-view-day-name").textContent =
+          getFullDayName(selectedDay);
+
+        renderDailyCards();
+        if (currentView === "weekly") renderWeeklyGrid();
+      }
+
+      function getFullDayName(abbr) {
+        const map = {
+          MON: "Monday",
+          TUE: "Tuesday",
+          WED: "Wednesday",
+          THU: "Thursday",
+          FRI: "Friday",
+          SAT: "Saturday",
+          SUN: "Sunday",
+        };
+        return map[abbr] || abbr;
+      }
+
+      function renderDailyCards() {
+        const container = document.getElementById("daily-cards-container");
+        container.innerHTML = "";
+
+        const daysClasses = timetableData
+          .filter((d) => d.day === selectedDay)
+          .sort((a, b) => parseTime(a.start) - parseTime(b.start));
+
+        if (daysClasses.length === 0) {
+          container.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-12 text-stone-400 bg-stone-50 rounded-xl border border-dashed border-stone-200">
+                        <span class="text-4xl mb-2">☕</span>
+                        <p>No classes scheduled for ${getFullDayName(selectedDay)}.</p>
+                    </div>`;
+          return;
+        }
+
+        daysClasses.forEach((cls) => {
+          // Check if matches search
+          const matches =
+            !searchTerm ||
+            cls.course.toLowerCase().includes(searchTerm) ||
+            cls.teacher.toLowerCase().includes(searchTerm) ||
+            cls.code.toLowerCase().includes(searchTerm);
+
+          const opacityClass = matches ? "opacity-100" : "opacity-40";
+          const colorClass = courseColors[cls.course] || defaultColor;
+
+          const card = document.createElement("div");
+          card.className = `flex flex-col sm:flex-row gap-4 p-4 rounded-xl border-l-4 shadow-sm bg-white hover:shadow-md transition-all ${colorClass.replace("bg-", "hover:bg-opacity-10")} ${opacityClass}`;
+          // Extract border color from class string logic (hacky but works for tailwind strings)
+          const borderColor = colorClass.match(/border-([a-z]+-\d+)/)[0];
+          card.classList.add(borderColor); // Add border color class
+
+          card.innerHTML = `
+                    <div class="flex-shrink-0 flex flex-col items-center justify-center min-w-[100px] border-r border-stone-100 pr-4">
+                        <span class="text-lg font-bold text-stone-800">${cls.start}</span>
+                        <span class="text-xs text-stone-500">to</span>
+                        <span class="text-sm font-medium text-stone-600">${cls.end}</span>
+                    </div>
+                    <div class="flex-grow">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <h4 class="font-bold text-lg leading-tight mb-1">${cls.course}</h4>
+                                <p class="text-sm text-stone-600 font-medium">${cls.code} • ${cls.credits}</p>
+                            </div>
+                            <span class="text-xs font-bold px-2 py-1 rounded bg-white bg-opacity-50 text-stone-600 border border-stone-200">${cls.room}</span>
+                        </div>
+                        <div class="mt-3 flex items-center gap-2 text-sm text-stone-500">
+                            <span>👨‍🏫 ${cls.teacher}</span>
+                        </div>
+                    </div>
+                `;
+          container.appendChild(card);
+        });
+      }
+
+      function renderWeeklyGrid() {
+        const tbody = document.getElementById("weekly-grid-body");
+        tbody.innerHTML = "";
+
+        // Define time slots for the grid rows (based on all unique start/end times)
+        // Simplified: Hour blocks from 8 AM to 4 PM
+        const hours = [8, 9, 10, 11, 12, 13, 14, 15];
+
+        hours.forEach((hour) => {
+          const tr = document.createElement("tr");
+          const timeLabel = formatMinutes(hour * 60);
+
+          // Time Column
+          const tdTime = document.createElement("td");
+          tdTime.className =
+            "px-4 py-3 text-stone-500 font-mono text-xs border-r border-stone-100 bg-stone-50 sticky left-0 z-10";
+          tdTime.textContent = timeLabel;
+          tr.appendChild(tdTime);
+
+          // Day Columns
+          ["MON", "TUE", "WED", "THU"].forEach((day) => {
+            const td = document.createElement("td");
+            td.className =
+              "px-2 py-2 border-r border-stone-100 relative h-24 align-top transition-colors hover:bg-stone-50";
+
+            // Find class starting in this hour (approximate for grid viz)
+            // We look for classes that start OR span across this hour
+            const classInSlot = timetableData.find((c) => {
+              if (c.day !== day) return false;
+              const startMin = parseTime(c.start);
+              const endMin = parseTime(c.end);
+              const slotStart = hour * 60;
+              const slotEnd = (hour + 1) * 60;
+
+              // Simple overlap check: class starts in this hour
+              return startMin >= slotStart && startMin < slotEnd;
+            });
+
+            if (classInSlot) {
+              const colorClass =
+                courseColors[classInSlot.course] || defaultColor;
+              const matches =
+                !searchTerm ||
+                classInSlot.course.toLowerCase().includes(searchTerm);
+              const opacity = matches ? "opacity-100" : "opacity-20";
+
+              // Calculate height percentage relative to 1 hour (60 mins)
+              const duration =
+                parseTime(classInSlot.end) - parseTime(classInSlot.start);
+              const heightPct = Math.min((duration / 60) * 100, 200); // Cap at 200% for very long classes
+
+              // Calculate top offset
+              const startOffset = parseTime(classInSlot.start) % 60;
+              const topPct = (startOffset / 60) * 100;
+
+              const div = document.createElement("div");
+              // Use absolute positioning within cell if needed, but for simplicity we stack
+              div.className = `p-2 rounded text-xs ${colorClass} border shadow-sm ${opacity} cursor-pointer hover:scale-105 transition-transform z-10`;
+              div.style.minHeight = `${heightPct}%`;
+
+              div.innerHTML = `
+                            <div class="font-bold truncate">${classInSlot.course}</div>
+                            <div class="opacity-75 truncate">${classInSlot.room}</div>
+                            <div class="mt-1 opacity-75 text-[10px]">${classInSlot.start} - ${classInSlot.end}</div>
+                        `;
+              div.title = `${classInSlot.course} with ${classInSlot.teacher}`;
+              td.appendChild(div);
+            }
+            tr.appendChild(td);
+          });
+          tbody.appendChild(tr);
+        });
+      }
+
+      function renderCourseList() {
+        const container = document.getElementById("course-list");
+        container.innerHTML = "";
+
+        // Aggregate info per course
+        const uniqueCourseNames = [
+          ...new Set(timetableData.map((c) => c.course)),
+        ];
+
+        uniqueCourseNames.forEach((cName) => {
+          const info = timetableData.find((c) => c.course === cName);
+          if (!info) return;
+
+          const matches =
+            !searchTerm ||
+            cName.toLowerCase().includes(searchTerm) ||
+            info.teacher.toLowerCase().includes(searchTerm) ||
+            info.code.toLowerCase().includes(searchTerm);
+
+          if (!matches) return;
+
+          const count = timetableData.filter((c) => c.course === cName).length;
+          const div = document.createElement("div");
+          div.className =
+            "flex items-center p-3 rounded-lg border border-stone-200 hover:bg-stone-50 cursor-pointer transition-colors";
+          div.onclick = () => {
+            document.getElementById("course-search").value = cName;
+            searchTerm = cName.toLowerCase();
+            renderView(); // filter grid
+            renderCourseList(); // re-render list to show active state if we added that
+          };
+
+          const colorDot = courseColors[cName]
+            ? courseColors[cName].match(/bg-([a-z]+-\d+)/)[1]
+            : "gray-200";
+
+          div.innerHTML = `
+                    <div class="w-3 h-3 rounded-full bg-${colorDot} mr-3"></div>
+                    <div class="flex-grow">
+                        <div class="font-medium text-sm text-stone-800">${cName}</div>
+                        <div class="text-xs text-stone-500">${info.code} • ${info.teacher}</div>
+                    </div>
+                    <div class="text-xs font-bold text-stone-400 bg-stone-100 px-2 py-1 rounded">${count} slots</div>
+                `;
+          container.appendChild(div);
+        });
+
+        // Update Quick Stats
+        document.getElementById("total-courses-count").innerText =
+          uniqueCourseNames.length;
+
+        // Calculate Total Credits
+        // Note: Credits are listed as "3 (2-1)". We take the first number.
+        let totalCredits = 0;
+        uniqueCourseNames.forEach((cName) => {
+          const info = timetableData.find((c) => c.course === cName);
+          const match = info.credits.match(/^(\d+)/);
+          if (match) totalCredits += parseInt(match[1]);
+        });
+        document.getElementById("total-hours-count").innerText = totalCredits;
+      }
+
+      // --- CLOCK & LIVE STATUS ---
+
+      function initClock() {
+        updateClock();
+        setInterval(updateClock, 1000);
+      }
+
+      function updateClock() {
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString("en-US", { hour12: false });
+        document.getElementById("live-clock").innerText = timeStr;
+
+        const options = {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        };
+        document.getElementById("live-date").innerText = now.toLocaleDateString(
+          "en-US",
+          options,
+        );
+
+        updateStatus(now);
+      }
+
+      function updateStatus(now) {
+        const dayMap = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+        const currentDay = dayMap[now.getDay()];
+        const currentMins = now.getHours() * 60 + now.getMinutes();
+
+        // Find current class
+        const currentClass = timetableData.find((c) => {
+          if (c.day !== currentDay) return false;
+          const start = parseTime(c.start);
+          const end = parseTime(c.end);
+          return currentMins >= start && currentMins < end;
+        });
+
+        // Find next class
+        const nextClass = timetableData
+          .filter(
+            (c) => c.day === currentDay && parseTime(c.start) > currentMins,
+          )
+          .sort((a, b) => parseTime(a.start) - parseTime(b.start))[0];
+
+        const statusTitle = document.getElementById("status-title");
+        const statusDetails = document.getElementById("status-details");
+        const statusLabel = document.getElementById("status-label");
+        const statusCard = document.getElementById("status-card");
+
+        if (currentClass) {
+          statusCard.className = `bg-white border-l-4 rounded-lg p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 transition-all duration-500 border-emerald-500 bg-emerald-50`;
+          statusLabel.innerText = "Happening Now";
+          statusLabel.className =
+            "inline-block px-2 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold uppercase rounded mb-2";
+          statusTitle.innerText = currentClass.course;
+          statusDetails.innerHTML = `Room: <b>${currentClass.room}</b> • Ends at ${currentClass.end}`;
+        } else if (nextClass) {
+          statusCard.className = `bg-white border-l-4 rounded-lg p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 transition-all duration-500 border-amber-500`;
+          statusLabel.innerText = "Up Next";
+          statusLabel.className =
+            "inline-block px-2 py-1 bg-amber-100 text-amber-800 text-xs font-bold uppercase rounded mb-2";
+          statusTitle.innerText = nextClass.course;
+          const minDiff = parseTime(nextClass.start) - currentMins;
+          let timeText =
+            minDiff > 60
+              ? `in ${Math.floor(minDiff / 60)} hrs ${minDiff % 60} mins`
+              : `in ${minDiff} minutes`;
+          statusDetails.innerHTML = `Starts ${timeText} • Room: <b>${nextClass.room}</b>`;
+        } else {
+          statusCard.className = `bg-white border-l-4 rounded-lg p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4 transition-all duration-500 border-stone-300`;
+          statusLabel.innerText = "Status";
+          statusLabel.className =
+            "inline-block px-2 py-1 bg-stone-100 text-stone-600 text-xs font-bold uppercase rounded mb-2";
+
+          if (["FRI", "SAT", "SUN"].includes(currentDay)) {
+            statusTitle.innerText = "Weekend Mode 🏖️";
+            statusDetails.innerText =
+              "No classes scheduled today. Enjoy your break!";
+          } else {
+            statusTitle.innerText = "Classes Done for Today ✅";
+            statusDetails.innerText =
+              "No more lectures scheduled. See you tomorrow!";
+          }
+        }
+      }
+
+      // --- CHARTS ---
+
+      function renderCharts() {
+        // CHART 1: Classes Per Day
+        const dayCounts = { MON: 0, TUE: 0, WED: 0, THU: 0 };
+        timetableData.forEach((c) => {
+          if (dayCounts[c.day] !== undefined) dayCounts[c.day]++;
+        });
+
+        const ctxDaily = document
+          .getElementById("dailyLoadChart")
+          .getContext("2d");
+        new Chart(ctxDaily, {
+          type: "bar",
+          data: {
+            labels: ["Mon", "Tue", "Wed", "Thu"],
+            datasets: [
+              {
+                label: "Sessions",
+                data: Object.values(dayCounts),
+                backgroundColor: ["#e11d48", "#2563eb", "#d97706", "#059669"],
+                borderRadius: 6,
+                barThickness: 40,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+            },
+            scales: {
+              y: { beginAtZero: true, ticks: { stepSize: 1 } },
+            },
+          },
+        });
+
+        // CHART 2: Credit Hours (Using unique courses)
+        const courses = [];
+        const credits = [];
+        const bgColors = [];
+
+        const uniqueNames = [...new Set(timetableData.map((c) => c.course))];
+        uniqueNames.forEach((name) => {
+          const info = timetableData.find((c) => c.course === name);
+          const credMatch = info.credits.match(/^(\d+)/);
+          const cred = credMatch ? parseInt(credMatch[1]) : 0;
+          courses.push(name.length > 20 ? name.substring(0, 18) + "..." : name);
+          credits.push(cred);
+
+          // Extract bg color from map or random
+          const twClass = courseColors[name] || "bg-gray-400";
+          // Very rough map of tailwind classes to hex for ChartJS
+          const colorMap = {
+            rose: "#f43f5e",
+            blue: "#3b82f6",
+            purple: "#a855f7",
+            emerald: "#10b981",
+            orange: "#f97316",
+            indigo: "#6366f1",
+            lime: "#84cc16",
+          };
+          let hex = "#9ca3af";
+          for (const key in colorMap) {
+            if (twClass.includes(key)) hex = colorMap[key];
+          }
+          bgColors.push(hex);
+        });
+
+        const ctxCredits = document
+          .getElementById("creditHourChart")
+          .getContext("2d");
+        new Chart(ctxCredits, {
+          type: "doughnut",
+          data: {
+            labels: courses,
+            datasets: [
+              {
+                data: credits,
+                backgroundColor: bgColors,
+                borderWidth: 0,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: { boxWidth: 10, font: { size: 10 } },
+              },
+            },
+          },
+        });
+      }
+    </script>
+  </body>
+</html>
